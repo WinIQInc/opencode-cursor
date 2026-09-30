@@ -4,6 +4,51 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Docs: model param ids are per model (#119).** Cursor model param ids differ
+  per model, so a `thinking` param set on a model that doesn't advertise one
+  (e.g. grok-4.6, which takes `effort`) is ignored and Cursor falls back to its
+  own default. The README's per-request controls example, `params` row, and
+  `thinking` rows, plus the `cursor_delegate`/`cursor_cloud_agent` `thinking`
+  tool-arg descriptions, were corrected to say so (wording only — no behavior
+  change).
+
+- **Fix: README v2 install snippet points at `@next` (#126).** The
+  `plugins` example used `@latest`, which resolves to 0.9.0 — a v1-only
+  build that opencode v2 rejects with "Plugin must export a default
+  definition with an id and an effect or setup function". v2 support is
+  published under the `next` dist-tag (0.10.0-next.1+) until promoted;
+  the snippet and a note now say so, and the troubleshooting entry now
+  gives the v2 cache path (`~/.cache/opencode/npm/<spec>/`, or
+  `opencode plugin update`) instead of only the v1 `packages/` path.
+
+- **Fix: fallback catalog's composer-2.5 param matches the live one.**
+  The keyless/fallback entry advertised a `thinking` param (off/on) that
+  the live catalog does not expose, yielding a bogus `thinking` variant;
+  it now declares only `fast` (false/true), so the fallback path yields
+  exactly the `fast` variant and `{ fast: "false" }` defaults.
+
+- **Add: `cursor_refresh_models` lists param ids and values (#119).**
+  Each model line now appends the model's advertised params as
+  `[effort=low|medium|high|xhigh, fast=false|true]` (no suffix when the
+  model has none), so accepted param ids and values are readable
+  straight from the tool output.
+
+- **Chore: dependency bumps (#122, #124, #125) and audit overrides.**
+  Consolidates the three open Dependabot PRs: `@connectrpc/connect-node`
+  2.1.2 → 2.2.0 (nothing in src/, scripts/, or test/ imports it, and
+  `@cursor/sdk` declares `^1.6.1` and nests its own 1.7.0 copy, so the
+  top-level entry — added in #31 when the SDK did not declare it — no
+  longer looks needed; left in place as a removal candidate),
+  `@cursor/sdk` 1.0.31 → 1.0.32, `@opencode-ai/plugin` and
+  `@opencode-ai/sdk` 1.18.25/1.18.30 → 1.18.33 (kept on one version, one
+  sdk copy in the tree), `@ai-sdk/provider` 3.0.15 → 3.0.18,
+  `@types/node` 26.5.0 → 26.6.3, `vitest` 5.0.0 → 5.0.2.
+  `@ai-sdk/provider` v4 and TypeScript 7 stay blocked (see
+  .github/dependabot.yml). Clears both `npm audit` findings via overrides:
+  `undici` `^6.28.1` (resolves 6.29.0, GHSA-3wwx-pv8p-q78v) and a new
+  `toml` `^4.2.0` (resolves 4.3.0, GHSA-82x6-q7mm-w9cf; reached through
+  `effect` under `@opencode-ai/plugin`).
+
 ## [0.10.0-next.1] — 2026-09-29 (pre-release)
 
 Adds opencode v2 support alongside v1 (#127). Not on `latest`; install with
