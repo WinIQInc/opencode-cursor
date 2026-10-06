@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0-winiq.1] — 2026-10-06
+
+WinIQ fork of 0.10.0, published as `@winiqinc/opencode-cursor` and installed
+from a seeded opencode package cache (not npm).
+
+- **Images reach the Cursor agent.** Image file parts (PNG, JPEG, GIF, WebP up
+  to 5 MB; bytes, base64, `data:` or `file://`) are sent as inline
+  `images: [{ data, mimeType }]`, on fresh, resumed and multi-turn sends. The
+  local agent accepts this form (verified on `@cursor/sdk` 1.0.32 and 1.0.36);
+  remote URLs and other files stay text notes.
+- **Models declare image input** (`modalities`), so opencode stops replacing
+  image parts with an error note before the provider sees them.
+- **A user `provider.cursor.models.<id>` entry merges per model** with the
+  discovered one instead of replacing it, so overriding `options.params` keeps
+  modalities, limits and variants.
+- **`@cursor/sdk` loads in-process under opencode 1.18.** opencode's compiled
+  Bun runtime does not resolve a bare dynamic `import("@cursor/sdk")` from the
+  plugin's install; the loader now falls back to the package's entry by path,
+  so the Node sidecar (Node 22.13+) is no longer required.
+- The plugin's own spec is skipped by the tool mirror at any version.
+
 ## [0.10.0] — 2026-10-03
 
 Adds opencode v2 support alongside v1 (#127), regenerates the model

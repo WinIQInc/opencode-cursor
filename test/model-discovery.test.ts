@@ -8,7 +8,7 @@ vi.mock("../src/model-cache.js", () => ({
   readLatestModelCache: () => readLatestModelCache(),
 }));
 
-const { discoverModels, modelSupportsReasoning, toOpencodeModels } = await import(
+const { discoverModels, mergeModelEntries, modelSupportsReasoning, toOpencodeModels } = await import(
   "../src/model-discovery.js"
 );
 const { NO_AUTO_COMPACTION_INPUT_LIMIT } = await import("../src/model-limits.js");
@@ -44,6 +44,35 @@ describe("toOpencodeModels", () => {
       attachment: true,
     });
     expect(map["plain"]!.reasoning).toBe(false);
+  });
+
+  it("keeps discovered fields when the user config overrides only some of them", () => {
+    const merged = mergeModelEntries(toOpencodeModels(items), {
+      "composer-2.5": { options: { params: { context: "1m" } } },
+      custom: { name: "Custom" },
+    });
+    const composer = merged["composer-2.5"] as ReturnType<typeof toOpencodeModels>[string];
+    expect(composer.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    expect(composer.reasoning).toBe(true);
+    expect(Object.keys(composer.variants).length).toBeGreaterThan(0);
+    expect(composer.options.params).toMatchObject({ context: "1m" });
+    expect(merged["custom"]).toEqual({ name: "Custom" });
+  });
+
+  it("lets user values win over discovered ones", () => {
+    const merged = mergeModelEntries(toOpencodeModels(items), {
+      plain: { name: "Renamed", options: { params: { fast: "true" } } },
+    });
+    const plain = merged["plain"] as ReturnType<typeof toOpencodeModels>[string];
+    expect(plain.name).toBe("Renamed");
+    expect(plain.options.params).toMatchObject({ fast: "true" });
+  });
+
+  it("declares image input, or opencode strips image parts before the provider", () => {
+    const map = toOpencodeModels(items);
+    for (const entry of Object.values(map)) {
+      expect(entry.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    }
   });
 
   it("falls back to id when displayName missing", () => {

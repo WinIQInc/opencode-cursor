@@ -22,6 +22,7 @@ vi.mock("node:os", async (importOriginal) => {
 vi.mock("../src/model-discovery.js", () => ({
 	discoverModels: async () => ({ models: [], source: "fallback" }),
 	toOpencodeModels: () => ({}),
+	mergeModelEntries: (a: object, b: object) => ({ ...a, ...b }),
 }));
 
 const { CursorPlugin: plugin } = await import("../src/plugin/index.js");

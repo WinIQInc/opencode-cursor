@@ -99,6 +99,12 @@ export interface OpencodeModelConfigEntry {
   temperature: boolean;
   tool_call: boolean;
   /**
+   * Without `modalities` opencode treats the model as text-only and replaces
+   * every image part with an error note before the provider sees it. The
+   * provider forwards images inline (message-map), so declare image input.
+   */
+  modalities: { input: Array<"text" | "image">; output: Array<"text"> };
+  /**
    * opencode model variants (thinking levels + plan mode). They MUST be seeded
    * here: opencode discards the plugin `provider.models()` hook for providers
    * absent from its models.dev catalog, so this config map is the only channel
@@ -177,6 +183,41 @@ const _limitKeyGuard: _KeysAccepted<
 void _limitKeyGuard;
 
 /**
+ * Layer the user's `provider.cursor.models` config over the discovered
+ * entries. The merge is per model: a user entry that sets only
+ * `options.params` (say, `context: "1m"`) must not wipe the discovered
+ * modalities, limits and variants, or opencode stops sending that model images
+ * and loses its thinking levels. User values win; `options.params` merges by key.
+ */
+export function mergeModelEntries<User extends Record<string, unknown>>(
+  discovered: Record<string, OpencodeModelConfigEntry>,
+  user: Record<string, User | undefined>,
+): Record<string, OpencodeModelConfigEntry | User> {
+  const merged: Record<string, OpencodeModelConfigEntry | User> = { ...discovered };
+  for (const [id, entry] of Object.entries(user)) {
+    if (!entry) continue;
+    const base = discovered[id];
+    if (!base) {
+      merged[id] = entry;
+      continue;
+    }
+    const userOptions = (entry["options"] ?? {}) as { params?: Record<string, string> };
+    merged[id] = {
+      ...base,
+      ...entry,
+      options: {
+        ...base.options,
+        ...userOptions,
+        ...(base.options.params || userOptions.params
+          ? { params: { ...base.options.params, ...userOptions.params } }
+          : {}),
+      },
+    } as OpencodeModelConfigEntry;
+  }
+  return merged;
+}
+
+/**
  * Map discovered Cursor models to opencode's provider config `models` map. The
  * Cursor SDK runs an agent (it calls tools itself), so every model is marked
  * `tool_call: true` and `temperature: false`.
@@ -196,6 +237,7 @@ export function toOpencodeModels(
       reasoning: modelSupportsReasoning(item),
       temperature: false,
       tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
       variants: buildModelVariants(item),
       options: Object.keys(params).length > 0 ? { params } : {},
       limit: {

@@ -116,9 +116,9 @@ export class CursorLanguageModel implements LanguageModelV3 {
 	readonly specificationVersion = "v3" as const;
 	readonly modelId: string;
 	readonly provider: string;
-	// The local Cursor agent has no attachment channel, so file parts (images,
-	// directories, other media) are noted as text in message-map rather than
-	// fetched or attached; no URLs are resolved natively.
+	// No URLs are resolved natively: the AI SDK downloads remote files into
+	// bytes first, and message-map attaches images inline (base64) — the only
+	// image form the local Cursor agent accepts.
 	readonly supportedUrls: Record<string, RegExp[]> = {};
 
 	constructor(

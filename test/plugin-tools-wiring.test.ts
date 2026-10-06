@@ -7,6 +7,7 @@ import { join } from "node:path";
 vi.mock("../src/model-discovery.js", () => ({
 	discoverModels: async () => ({ models: [], source: "fallback" }),
 	toOpencodeModels: () => ({}),
+	mergeModelEntries: (a: object, b: object) => ({ ...a, ...b }),
 	modelSupportsReasoning: () => false,
 }));
 

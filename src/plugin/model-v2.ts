@@ -10,7 +10,7 @@ import {
 import { buildModelVariants, defaultModelParams } from "../model-variants.js";
 
 export const PROVIDER_ID = "cursor";
-export const NPM_PACKAGE = "@stablekernel/opencode-cursor";
+export const NPM_PACKAGE = "@winiqinc/opencode-cursor";
 
 /**
  * The npm specifier opencode uses to load the provider SDK. Defaults to the

@@ -28,6 +28,7 @@ vi.mock("../src/model-discovery.js", () => ({
 		source: "fallback",
 	})),
 	toOpencodeModels: () => ({}),
+	mergeModelEntries: (a: object, b: object) => ({ ...a, ...b }),
 	modelSupportsReasoning: () => false,
 }));
 
@@ -190,7 +191,7 @@ describe("cursorV2Setup", () => {
 		expect(info["id"]).toBe("cursor");
 		expect(info["name"]).toBe("Cursor");
 		expect(String(info["package"])).toBe(
-			`aisdk:@stablekernel/opencode-cursor@${pkgVersion}`,
+			`aisdk:@winiqinc/opencode-cursor@${pkgVersion}`,
 		);
 		expect(info["activation"]).toBe("auto");
 		// The provider settings carry the session directory so the v2 runner
@@ -204,7 +205,7 @@ describe("cursorV2Setup", () => {
 		// `latest` and decouple the provider from this plugin's version).
 		for (const m of models) {
 			expect(m["package"]).toBe(
-				`aisdk:@stablekernel/opencode-cursor@${pkgVersion}`,
+				`aisdk:@winiqinc/opencode-cursor@${pkgVersion}`,
 			);
 		}
 	});

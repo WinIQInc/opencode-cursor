@@ -242,7 +242,7 @@ describe("PLUGIN_CACHE_PATH", () => {
   });
 
   it("contains the scoped package name", () => {
-    expect(PLUGIN_CACHE_PATH).toContain("@stablekernel");
+    expect(PLUGIN_CACHE_PATH).toContain("@winiqinc");
     expect(PLUGIN_CACHE_PATH).toContain("opencode-cursor");
   });
 

@@ -1,9 +1,22 @@
+import { readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type {
 	LanguageModelV3FilePart,
 	LanguageModelV3Prompt,
 } from "@ai-sdk/provider";
 import type { SDKUserMessage } from "@cursor/sdk";
+
+type SDKImage = NonNullable<SDKUserMessage["images"]>[number];
+
+/** Image types the local Cursor agent accepts inline (base64 + mimeType). */
+const INLINE_IMAGE_TYPES = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/gif",
+	"image/webp",
+]);
+/** Larger images are noted as text instead, so one attachment can't stall a turn. */
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /**
  * How opencode's system prompt reaches the Cursor agent.
@@ -46,18 +59,16 @@ function truncate(text: string, cap: number): string {
  * The Cursor agent keeps its own per-agent conversation memory, but opencode
  * re-sends the whole history each turn. To stay correct without double-counting
  * context, we create a fresh agent per turn (see language-model.ts) and flatten
- * the entire prompt into one transcript message. File attachments (images and
- * other files alike) are noted as text rather than attached natively: the
- * Cursor LOCAL SDK agent — the only backend this chat path uses — cannot accept
- * images in any form (URL images throw "URL images are only supported for cloud
- * SDK agents"; inline base64 images fail the run with an empty `status:"error"`,
- * surfacing as "Cursor run ended with status error" on an `@image` mention).
+ * the entire prompt into one transcript message. Images from every user turn
+ * ride along as inline `images` (see {@link inlineImage}); other files are
+ * noted as text.
  */
 export function promptToCursorMessage(
 	prompt: LanguageModelV3Prompt,
 	systemPrompt: SystemPromptMode = "rules",
 ): SDKUserMessage {
 	const lines: string[] = [];
+	const images: SDKImage[] = [];
 
 	prompt.forEach((message) => {
 		switch (message.role) {
@@ -70,15 +81,9 @@ export function promptToCursorMessage(
 				}
 				break;
 			case "user": {
-				const text: string[] = [];
-				for (const part of message.content) {
-					if (part.type === "text") text.push(part.text);
-					// File parts (images and other files) can't be forwarded to the
-					// local Cursor agent, so note them as text instead of dropping
-					// them — the agent still learns a file was referenced.
-					else if (part.type === "file") text.push(fileNote(part));
-				}
-				lines.push(`# User\n${text.join("\n")}`);
+				const turn = userTurnToCursorMessage(message);
+				lines.push(`# User\n${turn.text}`);
+				if (turn.images) images.push(...turn.images);
 				break;
 			}
 			case "assistant": {
@@ -112,24 +117,60 @@ export function promptToCursorMessage(
 		}
 	});
 
-	return { text: lines.join("\n\n") };
+	return images.length > 0
+		? { text: lines.join("\n\n"), images }
+		: { text: lines.join("\n\n") };
 }
 
 /**
- * A short text note standing in for a file attachment that can't be forwarded
- * to the local Cursor agent.
+ * A file part as an inline Cursor image, or `undefined` when it can't be one.
+ *
+ * The local Cursor agent accepts `{ data, mimeType }` (verified on
+ * `@cursor/sdk` 1.0.32 and 1.0.36, the same channel dev-agent's Python SDK
+ * path uses). `{ url }` images are cloud-only — the local agent throws
+ * "URL images are only supported for cloud SDK agents" — so remote URLs stay
+ * text notes; `file://` sources are read from disk since the agent is local.
+ */
+function inlineImage(part: LanguageModelV3FilePart): SDKImage | undefined {
+	const mimeType = part.mediaType.toLowerCase();
+	if (!INLINE_IMAGE_TYPES.has(mimeType)) return undefined;
+	const data = base64Data(part.data);
+	if (data === undefined) return undefined;
+	// base64 is 4/3 of the decoded size.
+	if ((data.length * 3) / 4 > MAX_INLINE_IMAGE_BYTES) return undefined;
+	return { data, mimeType };
+}
+
+/** The base64 payload of a file part's data, or `undefined` for remote URLs and unreadable files. */
+function base64Data(data: string | Uint8Array | URL): string | undefined {
+	if (data instanceof Uint8Array) return Buffer.from(data).toString("base64");
+	const href = data instanceof URL ? data.href : data;
+	if (href.startsWith("data:")) {
+		const comma = href.indexOf(",");
+		if (comma < 0 || !href.slice(0, comma).endsWith(";base64")) return undefined;
+		return href.slice(comma + 1);
+	}
+	if (href.startsWith("file://")) {
+		try {
+			const path = fileURLToPath(href);
+			if (statSync(path).size > MAX_INLINE_IMAGE_BYTES) return undefined;
+			return readFileSync(path).toString("base64");
+		} catch {
+			return undefined;
+		}
+	}
+	// Any other scheme (http, https, …) is a remote URL the local agent can't take.
+	if (URL_SCHEME.test(href)) return undefined;
+	return href;
+}
+
+/**
+ * A short text note standing in for a file attachment that isn't sent inline:
+ * non-image files, remote image URLs, unreadable or oversized images. The run
+ * still completes and the agent learns a file was referenced.
  *
  * opencode hands `@`-mentions to the provider as file parts; `text/plain` and
- * directory mentions are already inlined as text upstream, so what reaches the
- * provider here is images and other media/binaries. The Cursor LOCAL SDK agent
- * (the only backend this chat path uses) cannot accept any of them:
- *   - `{ url }` images throw `ConfigurationError: URL images are only supported
- *     for cloud SDK agents`,
- *   - `{ data, mimeType }` inline-base64 images fail the run with an empty
- *     `status:"error"` (the "Cursor run ended with status error" a user hits on
- *     an `@image` mention — regardless of model).
- * So rather than attaching — and failing the whole turn — we note the file as
- * text. The run completes and the agent still learns a file was referenced.
+ * directory mentions are already inlined as text upstream.
  */
 function fileNote(part: LanguageModelV3FilePart): string {
 	const name = part.filename ?? describeSource(part.data) ?? "file";
@@ -163,20 +204,28 @@ function fileUrlToPath(url: string | URL): string {
 }
 
 /**
- * Map one AI-SDK user turn into a Cursor `SDKUserMessage`. File parts (images
- * and other files) can't be forwarded to the local Cursor agent, so they're
- * noted as text via {@link fileNote} instead of attached natively.
+ * Map one AI-SDK user turn into a Cursor `SDKUserMessage`. Image parts are
+ * attached inline; every other file part is noted as text via {@link fileNote}.
  */
 function userTurnToCursorMessage(
 	message: Extract<LanguageModelV3Prompt[number], { role: "user" }>,
 ): SDKUserMessage {
 	const text: string[] = [];
+	const images: SDKImage[] = [];
 	for (const part of message.content) {
 		if (part.type === "text") text.push(part.text);
-		else if (part.type === "file") text.push(fileNote(part));
+		else if (part.type === "file") {
+			const image = inlineImage(part);
+			if (image) {
+				images.push(image);
+				text.push(`[attached image: ${part.filename ?? "image"}]`);
+			} else text.push(fileNote(part));
+		}
 	}
 
-	return { text: text.join("\n") };
+	return images.length > 0
+		? { text: text.join("\n"), images }
+		: { text: text.join("\n") };
 }
 
 /**

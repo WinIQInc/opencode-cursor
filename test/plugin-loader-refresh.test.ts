@@ -13,6 +13,7 @@ const discoverModels = vi.fn(
 vi.mock("../src/model-discovery.js", () => ({
   discoverModels,
   toOpencodeModels: () => ({}),
+  mergeModelEntries: (a: object, b: object) => ({ ...a, ...b }),
 }));
 
 const { CursorPlugin: plugin } = await import("../src/plugin/index.js");

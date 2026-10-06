@@ -60,13 +60,9 @@ describe("promptToCursorMessage", () => {
 		expect(msg.text).toBe("# User\nHi");
 	});
 
-	// Cursor's LOCAL SDK agent (the only backend the chat path uses) cannot
-	// accept images in any form: `{url}` throws "URL images are only supported
-	// for cloud SDK agents", and `{data,mimeType}` base64 fails the run with an
-	// empty `status:"error"` (the "Cursor run ended with status error" a user
-	// hits on an `@image` mention). So we never populate `images`; instead every
-	// file part is surfaced as a text note so the run always completes.
-	it("never attaches images; notes an image file part as text", () => {
+	// The local Cursor agent takes `{data, mimeType}` images; `{url}` ones are
+	// cloud-only, so only remote URLs (and non-images) stay text notes.
+	it("attaches an image file part inline as base64", () => {
 		const bytes = new Uint8Array([1, 2, 3, 4]);
 		const prompt: LanguageModelV3Prompt = [
 			{
@@ -83,9 +79,49 @@ describe("promptToCursorMessage", () => {
 			},
 		];
 		const msg = promptToCursorMessage(prompt);
+		expect(msg.images).toEqual([
+			{ data: Buffer.from(bytes).toString("base64"), mimeType: "image/png" },
+		]);
+		expect(msg.text).toContain("[attached image: shot.png]");
+		expect(msg.text).not.toContain("not forwarded");
+	});
+
+	it("collects images from every user turn of a full transcript", () => {
+		const prompt: LanguageModelV3Prompt = [
+			{
+				role: "user",
+				content: [{ type: "file", data: "AAAA", mediaType: "image/jpeg" }],
+			},
+			{ role: "assistant", content: [{ type: "text", text: "ok" }] },
+			{
+				role: "user",
+				content: [{ type: "file", data: "BBBB", mediaType: "image/webp" }],
+			},
+		];
+		const msg = promptToCursorMessage(prompt);
+		expect(msg.images).toEqual([
+			{ data: "AAAA", mimeType: "image/jpeg" },
+			{ data: "BBBB", mimeType: "image/webp" },
+		]);
+	});
+
+	it("notes an oversized image as text instead of attaching it", () => {
+		const prompt: LanguageModelV3Prompt = [
+			{
+				role: "user",
+				content: [
+					{
+						type: "file",
+						data: new Uint8Array(6 * 1024 * 1024),
+						mediaType: "image/png",
+						filename: "huge.png",
+					},
+				],
+			},
+		];
+		const msg = promptToCursorMessage(prompt);
 		expect(msg.images).toBeUndefined();
-		expect(msg.text).toContain("shot.png");
-		expect(msg.text).toContain("image/png");
+		expect(msg.text).toContain("huge.png");
 	});
 
 	it("includes tool outputs (truncated) instead of dropping them", () => {
@@ -156,7 +192,7 @@ describe("promptToCursorMessage", () => {
 		expect(msg.text).toContain("a.png");
 	});
 
-	it("notes a file:// image URL (URL object) as text, never as an image", () => {
+	it("reads a file:// image URL (URL object) from disk and attaches it", () => {
 		const { url } = tempFile("px.png", PNG_BYTES);
 		const prompt: LanguageModelV3Prompt = [
 			{
@@ -173,11 +209,13 @@ describe("promptToCursorMessage", () => {
 			},
 		];
 		const msg = promptToCursorMessage(prompt);
-		expect(msg.images).toBeUndefined();
-		expect(msg.text).toContain("px.png");
+		expect(msg.images).toEqual([
+			{ data: PNG_BYTES.toString("base64"), mimeType: "image/png" },
+		]);
+		expect(msg.text).toContain("[attached image: px.png]");
 	});
 
-	it("notes a data: URI image as text, never as an image", () => {
+	it("attaches a data: URI image by its base64 payload", () => {
 		const b64 = PNG_BYTES.toString("base64");
 		const prompt: LanguageModelV3Prompt = [
 			{
@@ -193,8 +231,8 @@ describe("promptToCursorMessage", () => {
 			},
 		];
 		const msg = promptToCursorMessage(prompt);
-		expect(msg.images).toBeUndefined();
-		expect(msg.text).toContain("inline.png");
+		expect(msg.images).toEqual([{ data: b64, mimeType: "image/png" }]);
+		expect(msg.text).toContain("[attached image: inline.png]");
 	});
 
 	it("notes a non-image file attachment as text instead of dropping it", () => {
@@ -284,7 +322,7 @@ describe("promptToCursorMessage", () => {
 		expect(msg.text).toContain("https://example.com/pic.png");
 	});
 
-	it("never inlines raw base64 string data; falls back to a generic name", () => {
+	it("attaches raw base64 image data without inlining it into the text", () => {
 		const b64 = PNG_BYTES.toString("base64");
 		const prompt: LanguageModelV3Prompt = [
 			{
@@ -292,8 +330,7 @@ describe("promptToCursorMessage", () => {
 				content: [
 					{
 						type: "file",
-						// Raw base64 with no data: prefix and no filename — must NOT
-						// end up verbatim in the note text.
+						// Raw base64 with no data: prefix and no filename.
 						data: b64,
 						mediaType: "image/png",
 					},
@@ -301,9 +338,23 @@ describe("promptToCursorMessage", () => {
 			},
 		];
 		const msg = promptToCursorMessage(prompt);
+		expect(msg.images).toEqual([{ data: b64, mimeType: "image/png" }]);
+		expect(msg.text).not.toContain(b64);
+		expect(msg.text).toContain("[attached image: image]");
+	});
+
+	it("never inlines raw base64 of a non-image file into the note", () => {
+		const b64 = Buffer.from("%PDF-1.4\n").toString("base64");
+		const prompt: LanguageModelV3Prompt = [
+			{
+				role: "user",
+				content: [{ type: "file", data: b64, mediaType: "application/pdf" }],
+			},
+		];
+		const msg = promptToCursorMessage(prompt);
 		expect(msg.images).toBeUndefined();
 		expect(msg.text).not.toContain(b64);
-		expect(msg.text).toContain("[attached file: file (image/png)");
+		expect(msg.text).toContain("[attached file: file (application/pdf)");
 	});
 });
 
@@ -326,7 +377,7 @@ describe("latestUserMessage", () => {
 		expect(latestUserMessage(prompt)).toBeUndefined();
 	});
 
-	it("notes an image in the final user turn as text, never as an image", () => {
+	it("attaches an image in the final user turn (resumed agents get it too)", () => {
 		const { url } = tempFile("px.png", PNG_BYTES);
 		const prompt: LanguageModelV3Prompt = [
 			{
@@ -343,8 +394,10 @@ describe("latestUserMessage", () => {
 			},
 		];
 		const msg = latestUserMessage(prompt);
-		expect(msg?.images).toBeUndefined();
-		expect(msg?.text).toContain("px.png");
+		expect(msg?.images).toEqual([
+			{ data: PNG_BYTES.toString("base64"), mimeType: "image/png" },
+		]);
+		expect(msg?.text).toContain("[attached image: px.png]");
 	});
 
 	it("notes a non-image attachment in the final user turn as text", () => {

@@ -17,7 +17,7 @@
  *  - git specs (`name@git+https:...`) when the cache entry resolves.
  *  - explicit local file paths (`.ts`/`.js`), imported directly.
  * Skipped: anything that fails to import/init (logged, never fatal), and the
- * `@stablekernel/opencode-cursor` spec itself (never mirror ourselves).
+ * plugin's own spec at any version (never mirror ourselves).
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
@@ -29,11 +29,12 @@ import { tool } from "@opencode-ai/plugin";
 import type { Config, ToolDefinition } from "@opencode-ai/plugin";
 import { opencodePackagesRoot } from "./skill-discovery.js";
 
-/** Our own spec, excluded from mirroring (never mirror ourselves). */
-const SELF_SPECS = new Set([
-	"@stablekernel/opencode-cursor",
-	"@stablekernel/opencode-cursor@latest",
-]);
+/** Our own package names (upstream and this fork), excluded from mirroring at any version. */
+const SELF_NAMES = ["@stablekernel/opencode-cursor", "@winiqinc/opencode-cursor"];
+
+function isSelfSpec(spec: string): boolean {
+	return SELF_NAMES.some((name) => spec === name || spec.startsWith(`${name}@`));
+}
 
 /** A tool definition mirrored from another plugin, ready to execute. */
 export interface MirroredTool {
@@ -350,7 +351,7 @@ export async function mirrorPluginTools(
 	const cacheRoot = options?.cacheRoot ?? opencodePackagesRoot(homedir());
 
 	for (const spec of specs) {
-		if (SELF_SPECS.has(spec)) continue;
+		if (isSelfSpec(spec)) continue;
 		const parsed = parsePluginSpec(spec);
 		if (!parsed) {
 			failed[spec] = "unsupported spec format";

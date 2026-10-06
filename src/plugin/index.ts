@@ -4,7 +4,7 @@ import type { McpServerConfig } from "@cursor/sdk";
 import { homedir } from "node:os";
 import semver from "semver";
 import { resolveCursorApiKey } from "../api-key.js";
-import { discoverModels, toOpencodeModels } from "../model-discovery.js";
+import { discoverModels, mergeModelEntries, toOpencodeModels } from "../model-discovery.js";
 import { defaultModelParams } from "../model-variants.js";
 import { buildModelV2Map, PROVIDER_ID, providerNpm } from "./model-v2.js";
 import {
@@ -572,10 +572,10 @@ export const CursorPlugin: Plugin = async (input) => {
 						? { skillsCatalogue: currentSkillsCatalogue }
 						: {}),
 				},
-				models: {
-					...toOpencodeModels(models, { autoCompaction }),
-					...(existing.models ?? {}),
-				},
+				models: mergeModelEntries(
+					toOpencodeModels(models, { autoCompaction }),
+					existing.models ?? {},
+				),
 			};
 		},
 

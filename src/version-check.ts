@@ -15,7 +15,7 @@ import semver from "semver";
  */
 declare const __PKG_VERSION__: string | undefined;
 
-const PACKAGE_NAME = "@stablekernel/opencode-cursor";
+const PACKAGE_NAME = "@winiqinc/opencode-cursor";
 const REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE_NAME)}/latest`;
 
 /**
