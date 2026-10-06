@@ -59,6 +59,19 @@ describe("toOpencodeModels", () => {
     expect(merged["custom"]).toEqual({ name: "Custom" });
   });
 
+  it("gives an alias of a discovered model that model's entry under its own params", () => {
+    const merged = mergeModelEntries(toOpencodeModels(items), {
+      "composer-2.5@effort=high": { id: "composer-2.5", options: { params: { effort: "high" } } },
+    });
+    const alias = merged["composer-2.5@effort=high"] as ReturnType<typeof toOpencodeModels>[string];
+    expect(alias.id).toBe("composer-2.5");
+    expect(alias.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    expect(alias.limit).toEqual((merged["composer-2.5"] as typeof alias).limit);
+    expect(alias.options.params).toMatchObject({ effort: "high" });
+    // The model itself is untouched.
+    expect((merged["composer-2.5"] as typeof alias).options.params?.effort).toBeUndefined();
+  });
+
   it("lets user values win over discovered ones", () => {
     const merged = mergeModelEntries(toOpencodeModels(items), {
       plain: { name: "Renamed", options: { params: { fast: "true" } } },

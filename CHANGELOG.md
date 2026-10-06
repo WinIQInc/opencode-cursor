@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0-winiq.2] — 2026-10-06
+
+- **Model aliases.** A `provider.cursor.models` entry under a new key whose `id`
+  names a discovered model inherits that model's entry (modalities, limits,
+  variants, cost) under its own `options.params`, so one Cursor model can be
+  offered with several pinned parameter sets (dev-agent's model tiers).
+
 ## [0.10.0-winiq.1] — 2026-10-06
 
 WinIQ fork of 0.10.0, published as `@winiqinc/opencode-cursor` and installed

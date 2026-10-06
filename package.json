@@ -1,6 +1,6 @@
 {
   "name": "@winiqinc/opencode-cursor",
-  "version": "0.10.0-winiq.1",
+  "version": "0.10.0-winiq.2",
   "description": "WinIQ fork of @stablekernel/opencode-cursor: inline images and in-process @cursor/sdk loading under opencode",
   "type": "module",
   "license": "MIT",

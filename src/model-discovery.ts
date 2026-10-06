@@ -188,6 +188,11 @@ void _limitKeyGuard;
  * `options.params` (say, `context: "1m"`) must not wipe the discovered
  * modalities, limits and variants, or opencode stops sending that model images
  * and loses its thinking levels. User values win; `options.params` merges by key.
+ *
+ * An entry under a new key whose `id` names a discovered model is an alias of
+ * it (e.g. `"claude-opus-5-5@effort=high": { id: "claude-opus-5-5", options:
+ * { params: { effort: "high" } } }`): it inherits that model's entry the same
+ * way, so one Cursor model can be offered under several pinned parameter sets.
  */
 export function mergeModelEntries<User extends Record<string, unknown>>(
   discovered: Record<string, OpencodeModelConfigEntry>,
@@ -196,7 +201,8 @@ export function mergeModelEntries<User extends Record<string, unknown>>(
   const merged: Record<string, OpencodeModelConfigEntry | User> = { ...discovered };
   for (const [id, entry] of Object.entries(user)) {
     if (!entry) continue;
-    const base = discovered[id];
+    const aliasOf = typeof entry["id"] === "string" ? discovered[entry["id"]] : undefined;
+    const base = discovered[id] ?? aliasOf;
     if (!base) {
       merged[id] = entry;
       continue;
